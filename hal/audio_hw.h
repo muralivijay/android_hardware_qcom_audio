@@ -248,6 +248,11 @@ enum {
 
     /*Audio FM Tuner usecase*/
     USECASE_AUDIO_FM_TUNER_EXT,
+
+    /* Elliptic Ultrasound usecases */
+    USECASE_AUDIO_ULTRASOUND_OUTPUT,
+    USECASE_AUDIO_ULTRASOUND_INPUT,
+
     AUDIO_USECASE_MAX
 };
 

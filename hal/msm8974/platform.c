@@ -519,6 +519,9 @@ static int pcm_device_table[AUDIO_USECASE_MAX][2] = {
     [USECASE_AUDIO_PLAYBACK_REAR_SEAT] = {REAR_SEAT_PCM_DEVICE,
                                           REAR_SEAT_PCM_DEVICE},
     [USECASE_AUDIO_FM_TUNER_EXT] = {-1, -1},
+
+    [USECASE_AUDIO_ULTRASOUND_OUTPUT] = {ULTRASOUND_OUTPUT_PCM_DEVICE, -1},
+    [USECASE_AUDIO_ULTRASOUND_INPUT] = {-1, ULTRASOUND_INPUT_PCM_DEVICE},
 };
 
 /* Array to store sound devices */
@@ -789,6 +792,7 @@ static const char * device_table[SND_DEVICE_MAX] = {
     [SND_DEVICE_IN_HANDSET_6MIC_AND_EC_REF_LOOPBACK] = "handset-6mic-and-ec-ref-loopback",
     [SND_DEVICE_IN_HANDSET_8MIC_AND_EC_REF_LOOPBACK] = "handset-8mic-and-ec-ref-loopback",
     [SND_DEVICE_IN_CALL_PROXY] = "call-proxy-in",
+    [SND_DEVICE_IN_ULTRASOUND] = "ultrasound-input",
 };
 
 // Platform specific backend bit width table
@@ -1351,6 +1355,7 @@ static struct name_to_index snd_device_name_index[SND_DEVICE_MAX] = {
     {TO_NAME_INDEX(SND_DEVICE_IN_HANDSET_6MIC_AND_EC_REF_LOOPBACK)},
     {TO_NAME_INDEX(SND_DEVICE_IN_HANDSET_8MIC_AND_EC_REF_LOOPBACK)},
     {TO_NAME_INDEX(SND_DEVICE_IN_CALL_PROXY)},
+    {TO_NAME_INDEX(SND_DEVICE_IN_ULTRASOUND)},
 };
 
 static char * backend_tag_table[SND_DEVICE_MAX] = {0};
@@ -1422,6 +1427,8 @@ static struct name_to_index usecase_name_index[AUDIO_USECASE_MAX] = {
     {TO_NAME_INDEX(USECASE_AUDIO_PLAYBACK_PHONE)},
     {TO_NAME_INDEX(USECASE_AUDIO_PLAYBACK_FRONT_PASSENGER)},
     {TO_NAME_INDEX(USECASE_AUDIO_PLAYBACK_REAR_SEAT)},
+    {TO_NAME_INDEX(USECASE_AUDIO_ULTRASOUND_OUTPUT)},
+    {TO_NAME_INDEX(USECASE_AUDIO_ULTRASOUND_INPUT)},
 };
 
 static const struct name_to_index usecase_type_index[USECASE_TYPE_MAX] = {
@@ -9004,6 +9011,9 @@ bool platform_listen_device_needs_event(snd_device_t snd_device)
 
     if ((snd_device >= SND_DEVICE_IN_BEGIN) &&
         (snd_device < SND_DEVICE_IN_END) &&
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+        (snd_device != SND_DEVICE_IN_ULTRASOUND) &&
+#endif
         (snd_device != SND_DEVICE_IN_CAPTURE_FM) &&
         (snd_device != SND_DEVICE_IN_CAPTURE_VI_FEEDBACK) &&
         (snd_device != SND_DEVICE_IN_CAPTURE_VI_FEEDBACK_MONO_1) &&
@@ -9024,6 +9034,9 @@ bool platform_sound_trigger_device_needs_event(snd_device_t snd_device)
 
     if ((snd_device >= SND_DEVICE_IN_BEGIN) &&
         (snd_device < SND_DEVICE_IN_END) &&
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+        (snd_device != SND_DEVICE_IN_ULTRASOUND) &&
+#endif
         (snd_device != SND_DEVICE_IN_CAPTURE_FM) &&
         (snd_device != SND_DEVICE_IN_CAPTURE_VI_FEEDBACK) &&
         (snd_device != SND_DEVICE_IN_CAPTURE_VI_FEEDBACK_MONO_1) &&

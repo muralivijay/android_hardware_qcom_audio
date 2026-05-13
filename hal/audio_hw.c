@@ -98,6 +98,10 @@
 #include <log_utils.h>
 #endif
 
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+#include "elliptic_ultrasound.h"
+#endif
+
 #define COMPRESS_OFFLOAD_NUM_FRAGMENTS 4
 /*DIRECT PCM has same buffer sizes as DEEP Buffer*/
 #define DIRECT_PCM_NUM_FRAGMENTS 2
@@ -428,6 +432,10 @@ const char * const use_case_table[AUDIO_USECASE_MAX] = {
     [USECASE_AUDIO_PLAYBACK_FRONT_PASSENGER] = "front-passenger-playback",
     [USECASE_AUDIO_PLAYBACK_REAR_SEAT] = "rear-seat-playback",
     [USECASE_AUDIO_FM_TUNER_EXT] = "fm-tuner-ext",
+
+    /* For Elliptic ultrasound proximity sensor */
+    [USECASE_AUDIO_ULTRASOUND_OUTPUT] = "ultrasound-proximity-output",
+    [USECASE_AUDIO_ULTRASOUND_INPUT] = "ultrasound-proximity-input",
 };
 
 static const audio_usecase_t offload_usecases[] = {
@@ -10344,6 +10352,9 @@ static int adev_close(hw_device_t *device)
              audio_extn_spkr_prot_deinit();
         if (amplifier_close() != 0)
             ALOGE("Amplifier close failed");
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+        audio_extn_ultrasound_deinit();
+#endif
         audio_extn_battery_properties_listener_deinit();
         audio_extn_snd_mon_unregister_listener(adev);
         audio_extn_sound_trigger_deinit(adev);
@@ -10775,6 +10786,11 @@ static int adev_open(const hw_module_t *module, const char *name,
     adev->vr_audio_mode_enabled = false;
 
     audio_extn_ds2_enable(adev);
+
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    if (audio_extn_ultrasound_init(adev) != 0)
+        ALOGE("Ultrasound proximity initialization failed");
+#endif
 
     if (amplifier_open(adev) != 0)
         ALOGE("Amplifier initialization failed");
