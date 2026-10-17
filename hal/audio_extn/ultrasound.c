@@ -25,7 +25,7 @@
 #include <platform.h>
 #include "ultrasound.h"
 
-#define ULTRASOUND_CALIBRATION_FILE "/mnt/vendor/persist/audio/elliptic_calibration"
+#define ULTRASOUND_CALIBRATION_FILE "/mnt/vendor/persist/audio/us_cal_v2"
 #define ULTRASOUND_CALIBRATION_MIXER "Ultrasound Calibration Data"
 
 enum {
