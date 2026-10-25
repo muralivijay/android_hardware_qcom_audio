@@ -81,6 +81,7 @@
 #include "audio_extn.h"
 #include "voice_extn.h"
 #include "ip_hdlr_intf.h"
+#include "audio_extn/elliptic_ultrasound.h"
 
 #include "sound/compress_params.h"
 
@@ -434,8 +435,8 @@ const char * const use_case_table[AUDIO_USECASE_MAX] = {
     [USECASE_AUDIO_FM_TUNER_EXT] = "fm-tuner-ext",
 
     /* For Elliptic ultrasound proximity sensor */
-    [USECASE_AUDIO_ULTRASOUND_OUTPUT] = "ultrasound-proximity-output",
-    [USECASE_AUDIO_ULTRASOUND_INPUT] = "ultrasound-proximity-input",
+    [USECASE_AUDIO_ULTRASOUND_PROXIMITY_OUTPUT] = "ultrasound-proximity-output",
+    [USECASE_AUDIO_ULTRASOUND_PROXIMITY_INPUT] = "ultrasound-proximity-input",
 };
 
 static const audio_usecase_t offload_usecases[] = {
@@ -2688,6 +2689,13 @@ int select_devices(struct audio_device *adev, audio_usecase_t uc_id)
         return -EINVAL;
     }
 
+//    if (usecase->stream.out && compare_device_type(&usecase->stream.out->device_list, AUDIO_DEVICE_OUT_SPEAKER)) {
+//        ALOGD("%s: speaker device requested for usecase %d, stopping ultrasound async", __func__, uc_id);
+//        audio_extn_ultrasound_stop_async();
+//    }
+
+
+
     if ((usecase->type == VOICE_CALL) ||
         (usecase->type == VOIP_CALL)  ||
         (usecase->type == PCM_HFP_CALL)) {
@@ -2945,6 +2953,14 @@ int select_devices(struct audio_device *adev, audio_usecase_t uc_id)
         else
             out_snd_device = SND_DEVICE_OUT_SPEAKER;
     }
+
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+    /*
+     * Synchronously stop ultrasound and close PCM 39 BEFORE disabling
+     * the old handset device and BEFORE check_usecases_codec_backend runs.
+     */
+    audio_extn_ultrasound_sync_stop(adev, out_snd_device);
+#endif
 
     /* Disable current sound devices */
     if (usecase->out_snd_device != SND_DEVICE_NONE) {
@@ -8781,6 +8797,10 @@ static int adev_set_parameters(struct audio_hw_device *dev, const char *kvpairs)
 
     if (!parms)
         goto error;
+
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+        audio_extn_ultrasound_set_parameters(adev, parms);
+#endif
 
     /* notify adev and input/output streams on the snd card status */
     adev_snd_mon_cb((void *)adev, parms);
