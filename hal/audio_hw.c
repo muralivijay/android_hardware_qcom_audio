@@ -8782,6 +8782,10 @@ static int adev_set_parameters(struct audio_hw_device *dev, const char *kvpairs)
     if (!parms)
         goto error;
 
+#ifdef ELLIPTIC_ULTRASOUND_ENABLED
+        audio_extn_ultrasound_set_parameters(adev, parms);
+#endif
+
     /* notify adev and input/output streams on the snd card status */
     adev_snd_mon_cb((void *)adev, parms);
 
