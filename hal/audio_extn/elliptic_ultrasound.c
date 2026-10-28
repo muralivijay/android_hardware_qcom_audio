@@ -26,10 +26,18 @@
 #define MAX_CMD_LEN 1024
 #define US_CMD_HEAD 17
 #define US_CMD_TAIL 1
+#define US_CAL_MAX_BYTES 4096
 
-#define MI_US_CAL_PATH "/mnt/vendor/persist/audio/mi_us_cal.txt"
-#define MI_US_MIXER_CTL "Mi_Ultrasound Calibration Data"
-#define MIUS_CALIBRATION_FLOAT_DATA_SIZE 56
+/* Elliptic calibration kcontrol.*/
+#define US_CAL_MIXER_CTL "Ultrasound Calibration Data"
+#define US_CAL_EXT_MIXER_CTL "Ultrasound Calibration Ext Data"
+#define US_CAL_DIR "/mnt/vendor/persist/audio/"
+
+static const char* const us_cal_files[] = {
+    US_CAL_DIR "us_cal_v2",
+    US_CAL_DIR "elliptic_calibration_v2",
+    US_CAL_DIR "elliptic_calibration",
+};
 
 enum {
     ULTRASOUND_STATUS_DEFAULT,
@@ -415,55 +423,79 @@ void audio_extn_ultrasound_deinit(void) {
     ALOGD("%s: exit", __func__);
 }
 
-void ultrasound_load_calibration(struct audio_device* adev) {
-    FILE* fp;
-    char buf[144];
-    size_t bytes_read;
-    int i;
-    char* token;
-    char* saveptr;
-    float cal_data[MIUS_CALIBRATION_FLOAT_DATA_SIZE / sizeof(float)] = {0};
-    struct mixer_ctl* ctl;
+static size_t ultrasound_parse_hex_text(const char* text, uint8_t* out, size_t out_max) {
+    size_t n = 0;
+    const char* p = text;
 
-    ALOGD("%s: enter", __func__);
-
-    fp = fopen(MI_US_CAL_PATH, "r");
-    if (!fp) {
-        ALOGE("%s: Cannot open calibration file: %s", __func__, MI_US_CAL_PATH);
-        return;
+    while (*p && n < out_max) {
+        while (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t' || *p == ',') p++;
+        if (!*p) break;
+        char* e = NULL;
+        unsigned long v = strtoul(p, &e, 16); /* base 16 also accepts the 0x prefix */
+        if (e == p || v > 0xff) break;
+        out[n++] = (uint8_t)v;
+        p = e;
     }
+    return n;
+}
 
-    bytes_read = fread(buf, 1, 140, fp);
-    if (bytes_read == 0) {
-        ALOGE("%s: Cannot read calibration file: %s", __func__, MI_US_CAL_PATH);
-        fclose(fp);
-        return;
-    }
-
-    buf[bytes_read] = '\0';
-    i = 0;
-    token = strtok_r(buf, " \n\r", &saveptr);
-    while (token != NULL) {
-        cal_data[i] = atof(token);
-        token = strtok_r(NULL, " \n\r", &saveptr);
-        i++;
-        if (i >= (MIUS_CALIBRATION_FLOAT_DATA_SIZE / sizeof(float))) break;
-    }
-    fclose(fp);
-
-    ctl = mixer_get_ctl_by_name(adev->mixer, MI_US_MIXER_CTL);
+static bool ultrasound_try_cal_ctl(struct audio_device* adev, const char* name,
+                                   const uint8_t* data, size_t n) {
+    struct mixer_ctl* ctl = mixer_get_ctl_by_name(adev->mixer, name);
     if (!ctl) {
-        ALOGE("%s: Could not get MI_US_CAL ctl for mixer cmd - %s", __func__, MI_US_MIXER_CTL);
-        return;
+        ALOGW("%s: kcontrol '%s' not present", __func__, name);
+        return false;
     }
-
-    if (mixer_ctl_set_array(ctl, cal_data, MIUS_CALIBRATION_FLOAT_DATA_SIZE) < 0) {
-        ALOGE("%s: Could not set ctl", __func__);
+    if (mixer_ctl_get_type(ctl) != MIXER_CTL_TYPE_BYTE) {
+        ALOGW("%s: '%s' is not a byte control", __func__, name);
+        return false;
     }
+    if (mixer_ctl_get_num_values(ctl) != n) {
+        ALOGD("%s: '%s' wants %u bytes, have %zu", __func__, name, mixer_ctl_get_num_values(ctl), n);
+        return false;
+    }
+    if (mixer_ctl_set_array(ctl, data, n) < 0) {
+        ALOGE("%s: failed to write '%s'", __func__, name);
+        return false;
+    }
+    ALOGI("%s: wrote %zu bytes to '%s'", __func__, n, name);
+    return true;
+}
 
-    ALOGD("%s: exit", __func__);
+static void ultrasound_load_calibration(struct audio_device* adev) {
+    for (size_t i = 0; i < sizeof(us_cal_files) / sizeof(us_cal_files[0]); i++) {
+        struct stat st;
+        if (stat(us_cal_files[i], &st) != 0) continue;
+        if (st.st_size <= 0 || st.st_size > 64 * 1024) {
+            ALOGW("%s: %s has unexpected size %ld, skipping", __func__, us_cal_files[i],
+                  (long)st.st_size);
+            continue;
+        }
 
-    return;
+        char* text = calloc(1, (size_t)st.st_size + 1);
+        uint8_t* bytes = calloc(1, US_CAL_MAX_BYTES);
+        FILE* fp = fopen(us_cal_files[i], "r");
+        if (!text || !bytes || !fp) {
+            if (fp) fclose(fp);
+            free(text);
+            free(bytes);
+            continue;
+        }
+        size_t got = fread(text, 1, (size_t)st.st_size, fp);
+        fclose(fp);
+        text[got] = '\0';
+
+        size_t n = ultrasound_parse_hex_text(text, bytes, US_CAL_MAX_BYTES);
+        ALOGI("%s: %s parsed to %zu bytes", __func__, us_cal_files[i], n);
+
+        bool ok = ultrasound_try_cal_ctl(adev, US_CAL_EXT_MIXER_CTL, bytes, n) ||
+                  ultrasound_try_cal_ctl(adev, US_CAL_MIXER_CTL, bytes, n);
+        free(text);
+        free(bytes);
+        if (ok) return;
+        ALOGW("%s: %s (%zu bytes) matched no calibration control", __func__, us_cal_files[i], n);
+    }
+    ALOGW("%s: no calibration applied", __func__);
 }
 
 static void ultrasound_server_init(struct audio_device* adev) {
