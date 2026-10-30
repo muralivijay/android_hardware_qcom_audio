@@ -217,7 +217,7 @@ static int ultrasound_start(void) {
     us->tx_usecase = tx_usecase;
 
     rx_usecase->type = PCM_PLAYBACK;
-    rx_usecase->out_snd_device = SND_DEVICE_OUT_VOICE_HANDSET;
+    rx_usecase->out_snd_device = SND_DEVICE_OUT_ULTRASOUND;
     rx_usecase->id = USECASE_AUDIO_ULTRASOUND_OUTPUT;
     list_init(&rx_usecase->device_list);
     us->rx_usecase = rx_usecase;

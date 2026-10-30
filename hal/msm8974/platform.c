@@ -643,6 +643,7 @@ static const char * device_table[SND_DEVICE_MAX] = {
     [SND_DEVICE_OUT_BUS_PAX] = "bus-speaker",
     [SND_DEVICE_OUT_BUS_RSE] = "bus-speaker",
     [SND_DEVICE_OUT_CALL_PROXY] = "call-proxy",
+    [SND_DEVICE_OUT_ULTRASOUND] = "ultrasound-output",
 
     /* Capture sound devices */
     [SND_DEVICE_IN_HANDSET_MIC] = "handset-mic",
@@ -1208,6 +1209,7 @@ static struct name_to_index snd_device_name_index[SND_DEVICE_MAX] = {
     {TO_NAME_INDEX(SND_DEVICE_OUT_BUS_PHN)},
     {TO_NAME_INDEX(SND_DEVICE_OUT_BUS_PAX)},
     {TO_NAME_INDEX(SND_DEVICE_OUT_BUS_RSE)},
+    {TO_NAME_INDEX(SND_DEVICE_OUT_ULTRASOUND)},
     {TO_NAME_INDEX(SND_DEVICE_OUT_CALL_PROXY)},
     {TO_NAME_INDEX(SND_DEVICE_IN_HANDSET_MIC)},
     {TO_NAME_INDEX(SND_DEVICE_IN_HANDSET_MIC_SB)},
