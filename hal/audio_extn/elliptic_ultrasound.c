@@ -353,11 +353,16 @@ void audio_extn_ultrasound_deinit(void) {
  * stream shows up (it restarts by itself once that is gone).
  */
 
-
 static void ultrasound_supervise(void) {
     if (!us) return;
 
-    struct audio_device* adev = us->adev;
+    if (!us_wanted) {
+        if (atomic_load(&us->state) == ULTRASOUND_STATUS_STARTED) {
+            ALOGI("%s: proximity disabled, stopping ultrasound", __func__);
+            ultrasound_stop();
+        }
+        return;
+    }
 
     if (atomic_load(&us_wedged)) {
         if (!us_wedge_logged) {
@@ -366,11 +371,19 @@ static void ultrasound_supervise(void) {
         }
         return;
     }
+
+    /* Do not start again if already running */
+    if (atomic_load(&us->state) == ULTRASOUND_STATUS_STARTED) {
+        return;
+    }
+
     if (ultrasound_now_ms() < next_start_ms) return;
 
     int rc = ultrasound_start();
     ALOGI("%s: start -> %d", __func__, rc);
-    if (rc == -EIO) next_start_ms = ultrasound_now_ms() + US_START_COOLDOWN_MS;
+    if (rc == -EIO) {
+        next_start_ms = ultrasound_now_ms() + US_START_COOLDOWN_MS;
+    }
 }
 
 static void* ultrasound_worker_func(void* arg __unused) {
@@ -378,7 +391,6 @@ static void* ultrasound_worker_func(void* arg __unused) {
     while (worker_running) {
         if (pending_cmd < 0) {
             if (us_wanted) {
-                /* poll for conflicting audio while the sensor wants ultrasound */
                 struct timespec ts;
                 clock_gettime(CLOCK_REALTIME, &ts);
                 ts.tv_nsec += (long)US_POLL_MS * 1000000L;
@@ -388,6 +400,7 @@ static void* ultrasound_worker_func(void* arg __unused) {
                 }
                 pthread_cond_timedwait(&cmd_cond, &cmd_lock, &ts);
             } else {
+                /* When not wanted, sleep indefinitely until next command arrives */
                 pthread_cond_wait(&cmd_cond, &cmd_lock);
             }
         }
@@ -404,6 +417,7 @@ static void* ultrasound_worker_func(void* arg __unused) {
             us_wanted = false;
             us_last_conflict = false;
         }
+
         ultrasound_supervise();
 
         pthread_mutex_lock(&cmd_lock);
