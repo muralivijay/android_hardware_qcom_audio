@@ -1374,12 +1374,12 @@ int enable_snd_device(struct audio_device *adev,
 
     adev->snd_dev_ref_cnt[snd_device]++;
 
-   if (snd_device == SND_DEVICE_OUT_HEADPHONES ||
-       snd_device == SND_DEVICE_OUT_VOICE_HEADPHONES ||
-       snd_device == SND_DEVICE_OUT_LINE ||
-       snd_device == SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES ||
-       snd_device == SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES) {
-       audio_extn_ultrasound_on_device_change();
+    if (snd_device == SND_DEVICE_OUT_HEADPHONES ||
+        snd_device == SND_DEVICE_OUT_VOICE_HEADPHONES ||
+        snd_device == SND_DEVICE_OUT_LINE ||
+        snd_device == SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES ||
+        snd_device == SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES) {
+        audio_extn_ultrasound_on_device_change();
     }
 
     if ((adev->snd_dev_ref_cnt[snd_device] > 1) &&
@@ -10181,6 +10181,16 @@ int adev_create_audio_patch(struct audio_hw_device *dev,
     }
     update_patch(num_sources, sources, num_sinks, sinks,
              *handle, p_info, patch_type, new_patch);
+
+    for (unsigned int i = 0; i < num_sinks; i++) {
+        if (sinks[i].type == AUDIO_PORT_TYPE_DEVICE &&
+            (sinks[i].ext.device.type &
+             (AUDIO_DEVICE_OUT_WIRED_HEADSET | AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
+              AUDIO_DEVICE_OUT_LINE))) {
+            audio_extn_ultrasound_on_device_change();
+            break;
+        }
+    }
 
     // Fetch stream info of associated mix for playback or capture patches
     if (p_info->patch_type == PATCH_PLAYBACK ||

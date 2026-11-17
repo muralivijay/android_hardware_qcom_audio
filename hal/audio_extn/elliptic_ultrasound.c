@@ -108,6 +108,7 @@ static int sockfd = -1;
 
 static void ultrasound_stop(void) {
     struct audio_usecase *rx_usecase, *tx_usecase;
+    long long t0 = ultrasound_now_ms();
 
     ALOGD("%s: enter", __func__);
 
@@ -166,9 +167,13 @@ static void ultrasound_stop(void) {
     pthread_mutex_unlock(&us->adev->lock);
     pthread_mutex_unlock(&us->us_lock);
 
-    ALOGD("%s: exit", __func__);
+    long long elapsed = ultrasound_now_ms() - t0;
+    if (elapsed > US_SLOW_TEARDOWN_MS) {
+        ALOGE("%s: slow teardown (%lld ms), marking DSP wedged", __func__, elapsed);
+        atomic_store(&us_wedged, true);
+    }
 
-    return;
+    ALOGD("%s: exit (%lld ms)", __func__, elapsed);
 }
 
 static int ultrasound_start(void) {
@@ -343,14 +348,6 @@ void audio_extn_ultrasound_deinit(void) {
     ALOGD("%s: exit", __func__);
 }
 
-void audio_extn_ultrasound_on_device_change(void) {
-    pthread_mutex_lock(&cmd_lock);
-    if (worker_valid && us_wanted) {
-        pthread_cond_signal(&cmd_cond);
-    }
-    pthread_mutex_unlock(&cmd_lock);
-}
-
 static bool ultrasound_has_conflicting_device(struct audio_device* adev) {
     struct listnode* node;
     struct audio_usecase* usecase;
@@ -358,7 +355,7 @@ static bool ultrasound_has_conflicting_device(struct audio_device* adev) {
 
     pthread_mutex_lock(&adev->lock);
 
-    /* 1. Check if wired headphone snd_device is currently active */
+    /* 1. Check active snd_device reference counts */
     if (adev->snd_dev_ref_cnt[SND_DEVICE_OUT_HEADPHONES] > 0 ||
         adev->snd_dev_ref_cnt[SND_DEVICE_OUT_VOICE_HEADPHONES] > 0 ||
         adev->snd_dev_ref_cnt[SND_DEVICE_OUT_LINE] > 0 ||
@@ -367,12 +364,21 @@ static bool ultrasound_has_conflicting_device(struct audio_device* adev) {
         conflict = true;
     }
 
-    /* 2. Check current output device bitmask on audio_device (even when idle) */
-    if (!conflict &&
-        (adev->out_device &
-         (AUDIO_DEVICE_OUT_WIRED_HEADSET | AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
-          AUDIO_DEVICE_OUT_LINE))) {
-        conflict = true;
+    /* 2. Check legacy out_device bitmask AND modern audio_patch device_list (even when idle) */
+    if (!conflict) {
+        if (adev->out_device &
+            (AUDIO_DEVICE_OUT_WIRED_HEADSET | AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
+             AUDIO_DEVICE_OUT_LINE)) {
+            conflict = true;
+        } else if (adev->primary_output &&
+                   (compare_device_type(&adev->primary_output->device_list,
+                                        AUDIO_DEVICE_OUT_WIRED_HEADSET) ||
+                    compare_device_type(&adev->primary_output->device_list,
+                                        AUDIO_DEVICE_OUT_WIRED_HEADPHONE) ||
+                    compare_device_type(&adev->primary_output->device_list,
+                                        AUDIO_DEVICE_OUT_LINE))) {
+            conflict = true;
+        }
     }
 
     /* 3. Fallback: check active usecases */
@@ -632,4 +638,12 @@ int audio_extn_ultrasound_init(struct audio_device* adev) {
     ALOGD("%s: exit, status(0)", __func__);
 
     return 0;
+}
+
+void audio_extn_ultrasound_on_device_change(void) {
+    pthread_mutex_lock(&cmd_lock);
+    if (worker_valid && us_wanted) {
+        pthread_cond_signal(&cmd_cond);
+    }
+    pthread_mutex_unlock(&cmd_lock);
 }
