@@ -343,25 +343,55 @@ void audio_extn_ultrasound_deinit(void) {
     ALOGD("%s: exit", __func__);
 }
 
+void audio_extn_ultrasound_on_device_change(void) {
+    pthread_mutex_lock(&cmd_lock);
+    if (worker_valid && us_wanted) {
+        pthread_cond_signal(&cmd_cond);
+    }
+    pthread_mutex_unlock(&cmd_lock);
+}
+
 static bool ultrasound_has_conflicting_device(struct audio_device* adev) {
     struct listnode* node;
     struct audio_usecase* usecase;
     bool conflict = false;
 
     pthread_mutex_lock(&adev->lock);
-    list_for_each(node, &adev->usecase_list) {
-        usecase = node_to_item(node, struct audio_usecase, list);
-        if (usecase->type == PCM_PLAYBACK || usecase->type == VOICE_CALL) {
-            if (usecase->out_snd_device == SND_DEVICE_OUT_HEADPHONES ||
-                usecase->out_snd_device == SND_DEVICE_OUT_VOICE_HEADPHONES ||
-                usecase->out_snd_device == SND_DEVICE_OUT_LINE ||
-                usecase->out_snd_device == SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES ||
-                usecase->out_snd_device == SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES) {
-                conflict = true;
-                break;
+
+    /* 1. Check if wired headphone snd_device is currently active */
+    if (adev->snd_dev_ref_cnt[SND_DEVICE_OUT_HEADPHONES] > 0 ||
+        adev->snd_dev_ref_cnt[SND_DEVICE_OUT_VOICE_HEADPHONES] > 0 ||
+        adev->snd_dev_ref_cnt[SND_DEVICE_OUT_LINE] > 0 ||
+        adev->snd_dev_ref_cnt[SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES] > 0 ||
+        adev->snd_dev_ref_cnt[SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES] > 0) {
+        conflict = true;
+    }
+
+    /* 2. Check current output device bitmask on audio_device (even when idle) */
+    if (!conflict &&
+        (adev->out_device &
+         (AUDIO_DEVICE_OUT_WIRED_HEADSET | AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
+          AUDIO_DEVICE_OUT_LINE))) {
+        conflict = true;
+    }
+
+    /* 3. Fallback: check active usecases */
+    if (!conflict) {
+        list_for_each(node, &adev->usecase_list) {
+            usecase = node_to_item(node, struct audio_usecase, list);
+            if (usecase->type == PCM_PLAYBACK || usecase->type == VOICE_CALL) {
+                if (usecase->out_snd_device == SND_DEVICE_OUT_HEADPHONES ||
+                    usecase->out_snd_device == SND_DEVICE_OUT_VOICE_HEADPHONES ||
+                    usecase->out_snd_device == SND_DEVICE_OUT_LINE ||
+                    usecase->out_snd_device == SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES ||
+                    usecase->out_snd_device == SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES) {
+                    conflict = true;
+                    break;
+                }
             }
         }
     }
+
     pthread_mutex_unlock(&adev->lock);
     return conflict;
 }

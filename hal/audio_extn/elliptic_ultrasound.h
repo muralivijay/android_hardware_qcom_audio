@@ -12,5 +12,6 @@ struct str_parms;
 int audio_extn_ultrasound_init(struct audio_device* adev);
 void audio_extn_ultrasound_deinit(void);
 void audio_extn_ultrasound_set_parameters(struct audio_device* adev, struct str_parms* parms);
+void audio_extn_ultrasound_on_device_change(void);
 
 #endif

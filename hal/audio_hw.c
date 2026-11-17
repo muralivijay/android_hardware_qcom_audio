@@ -1374,6 +1374,14 @@ int enable_snd_device(struct audio_device *adev,
 
     adev->snd_dev_ref_cnt[snd_device]++;
 
+   if (snd_device == SND_DEVICE_OUT_HEADPHONES ||
+       snd_device == SND_DEVICE_OUT_VOICE_HEADPHONES ||
+       snd_device == SND_DEVICE_OUT_LINE ||
+       snd_device == SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES ||
+       snd_device == SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES) {
+       audio_extn_ultrasound_on_device_change();
+    }
+
     if ((adev->snd_dev_ref_cnt[snd_device] > 1) &&
             (platform_split_snd_device(adev->platform,
                                        snd_device,
