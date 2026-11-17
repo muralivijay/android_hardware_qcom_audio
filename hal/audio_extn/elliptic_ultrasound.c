@@ -343,6 +343,29 @@ void audio_extn_ultrasound_deinit(void) {
     ALOGD("%s: exit", __func__);
 }
 
+static bool ultrasound_has_conflicting_device(struct audio_device* adev) {
+    struct listnode* node;
+    struct audio_usecase* usecase;
+    bool conflict = false;
+
+    pthread_mutex_lock(&adev->lock);
+    list_for_each(node, &adev->usecase_list) {
+        usecase = node_to_item(node, struct audio_usecase, list);
+        if (usecase->type == PCM_PLAYBACK || usecase->type == VOICE_CALL) {
+            if (usecase->out_snd_device == SND_DEVICE_OUT_HEADPHONES ||
+                usecase->out_snd_device == SND_DEVICE_OUT_VOICE_HEADPHONES ||
+                usecase->out_snd_device == SND_DEVICE_OUT_LINE ||
+                usecase->out_snd_device == SND_DEVICE_OUT_SPEAKER_AND_HEADPHONES ||
+                usecase->out_snd_device == SND_DEVICE_OUT_SPEAKER_SAFE_AND_HEADPHONES) {
+                conflict = true;
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&adev->lock);
+    return conflict;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Supervisor and worker thread                                             */
 /* ------------------------------------------------------------------------ */
@@ -363,6 +386,19 @@ static void ultrasound_supervise(void) {
         }
         return;
     }
+
+    if (ultrasound_has_conflicting_device(us->adev)) {
+        if (atomic_load(&us->state) == ULTRASOUND_STATUS_STARTED) {
+            ALOGI("%s: wired headphone active, stopping ultrasound", __func__);
+            ultrasound_stop();
+        }
+        if (!us_last_conflict) {
+            ALOGD("%s: deferring ultrasound start due to active wired headphone", __func__);
+            us_last_conflict = true;
+        }
+        return;
+    }
+    us_last_conflict = false;
 
     if (atomic_load(&us_wedged)) {
         if (!us_wedge_logged) {
